@@ -23,10 +23,12 @@ struct editorConfig {
   int numRows;
   int cursor_x;
   int cursor_y;
+  char status_row[50];
 };
 
 struct editorConfig E;
 
+enum editorKey { ARROW_LEFT = 1000, ARROW_RIGHT, ARROW_UP, ARROW_DOWN };
 void die(const char *s) {
   perror(s);
   exit(1);
@@ -43,7 +45,7 @@ int getWindowSize(int *rows, int *cols) {
   }
 }
 
-void initEditor() {
+void initEditor(void) {
   if (getWindowSize(&E.screenrows, &E.screencols) == -1) {
     die("getWindowSize");
   }
@@ -86,30 +88,84 @@ void enableRawMode(void) {
     die("tcsetattr");
   }
 }
-
-char editorReadKey() {
+int editorReadKey(void) {
   int nread;
   char c;
   while ((nread = read(STDIN_FILENO, &c, 1)) != 1) {
     if (nread == -1 && errno != EAGAIN)
       die("read");
   }
+
+  if (c == '\x1b') {
+    char seq[3];
+
+    if (read(STDIN_FILENO, &seq[0], 1) != 1)
+      return '\x1b';
+    if (read(STDIN_FILENO, &seq[1], 1) != 1)
+      return '\x1b';
+
+    if (seq[0] == '[') {
+      switch (seq[1]) {
+      case 'A':
+        return ARROW_UP;
+      case 'B':
+        return ARROW_DOWN;
+      case 'C':
+        return ARROW_RIGHT;
+      case 'D':
+        return ARROW_LEFT;
+      }
+    }
+
+    return '\x1b';
+  }
+
   return c;
 }
 
-void editorProcessKeypress() {
-  char c = editorReadKey();
+void editorMoveCursor(int key) {
+  switch (key) {
+  case ARROW_LEFT:
+    E.cursor_x--;
+    break;
+  case ARROW_RIGHT:
+    E.cursor_x++;
+    break;
+  case ARROW_UP:
+    E.cursor_y--;
+    break;
+  case ARROW_DOWN:
+    E.cursor_y++;
+    break;
+  }
+}
+void editorProcessKeypress(void) {
+  int c = editorReadKey();
   switch (c) {
   case CTRL_KEY('q'):
     exit(0);
     break;
+
+  case ARROW_UP:
+  case ARROW_DOWN:
+  case ARROW_LEFT:
+  case ARROW_RIGHT:
+    editorMoveCursor(c);
+    break;
+  }
+  snprintf(E.status_row, 10, "%d\r\n", E.cursor_x); // printf("escape!");
+  if (c == '\x1b') {
+    char *lol = "esc\r\n";
+    write(STDOUT_FILENO, lol, 5); // printf("escape!");
   }
 }
+
 void editorDrawRows(void) {
   for (int i = 0; i < E.numRows; i++) {
     write(STDOUT_FILENO, E.row[i].chars, E.row[i].length);
     write(STDOUT_FILENO, "\r\n", 2);
   }
+  write(STDOUT_FILENO, E.status_row, 10);
   //  write(STDOUT_FILENO, E.row.chars, E.row.length);
   /*  for (int y = 0; y < E.screenrows; y++) {
       write(STDOUT_FILENO, "*\r\n", 3);
@@ -118,9 +174,13 @@ void editorDrawRows(void) {
 
 void editorRefreshScreen(void) {
   write(STDOUT_FILENO, "\x1b[2J", 4);
-  write(STDOUT_FILENO, "\x1b[H", 3);
+  write(STDOUT_FILENO, "\x1b[H", 3); // Move cursor to top left
+
   editorDrawRows();
-  write(STDOUT_FILENO, "\x1b[H", 3);
+
+  char buf[32];
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cursor_y + 1, E.cursor_x + 1);
+  write(STDOUT_FILENO, buf, strlen(buf));
 }
 
 void loadFile(char *filename) {
