@@ -123,22 +123,46 @@ int editorReadKey(void) {
   return c;
 }
 
+void clamp_cursor_to_row_width() {
+  if (E.cursor_x > E.row[E.cursor_y].length) {
+    E.cursor_x = E.row[E.cursor_y].length;
+  }
+}
+
 void editorMoveCursor(int key) {
   switch (key) {
   case ARROW_LEFT:
-    E.cursor_x--;
+    if (E.cursor_x > 0) {
+      E.cursor_x--;
+    } else if (E.cursor_y > 0) {
+      E.cursor_y--;
+      E.cursor_x = E.row[E.cursor_y].length;
+    }
+
     break;
   case ARROW_RIGHT:
-    E.cursor_x++;
+    if (E.cursor_x < E.row[E.cursor_y].length) {
+      E.cursor_x++;
+    } else if (E.cursor_y < E.numRows - 1) {
+      E.cursor_y++;
+      E.cursor_x = 0;
+    }
     break;
   case ARROW_UP:
-    E.cursor_y--;
+    if (E.cursor_y > 0) {
+      E.cursor_y--;
+      clamp_cursor_to_row_width();
+    }
     break;
   case ARROW_DOWN:
-    E.cursor_y++;
+    if (E.cursor_y < E.numRows - 1) {
+      E.cursor_y++;
+      clamp_cursor_to_row_width();
+    }
     break;
   }
 }
+
 void editorProcessKeypress(void) {
   int c = editorReadKey();
   switch (c) {
@@ -153,7 +177,8 @@ void editorProcessKeypress(void) {
     editorMoveCursor(c);
     break;
   }
-  snprintf(E.status_row, 10, "%d\r\n", E.cursor_x); // printf("escape!");
+  snprintf(E.status_row, 20, "x: %d - y: %d\r\n", E.cursor_x,
+           E.cursor_y); // printf("escape!");
   if (c == '\x1b') {
     char *lol = "esc\r\n";
     write(STDOUT_FILENO, lol, 5); // printf("escape!");
@@ -165,7 +190,7 @@ void editorDrawRows(void) {
     write(STDOUT_FILENO, E.row[i].chars, E.row[i].length);
     write(STDOUT_FILENO, "\r\n", 2);
   }
-  write(STDOUT_FILENO, E.status_row, 10);
+  write(STDOUT_FILENO, E.status_row, 20);
   //  write(STDOUT_FILENO, E.row.chars, E.row.length);
   /*  for (int y = 0; y < E.screenrows; y++) {
       write(STDOUT_FILENO, "*\r\n", 3);
