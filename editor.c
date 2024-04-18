@@ -122,8 +122,9 @@ int editorReadKey(void) {
 
   return c;
 }
-
+int latest_max_position = 0;
 void clamp_cursor_to_row_width() {
+  E.cursor_x = latest_max_position;
   if (E.cursor_x > E.row[E.cursor_y].length) {
     E.cursor_x = E.row[E.cursor_y].length;
   }
@@ -138,6 +139,7 @@ void editorMoveCursor(int key) {
       E.cursor_y--;
       E.cursor_x = E.row[E.cursor_y].length;
     }
+    latest_max_position = E.cursor_x;
 
     break;
   case ARROW_RIGHT:
@@ -147,15 +149,22 @@ void editorMoveCursor(int key) {
       E.cursor_y++;
       E.cursor_x = 0;
     }
+
+    latest_max_position = E.cursor_x;
     break;
   case ARROW_UP:
     if (E.cursor_y > 0) {
+      if (E.cursor_x > latest_max_position)
+        latest_max_position = E.cursor_x;
       E.cursor_y--;
       clamp_cursor_to_row_width();
     }
     break;
   case ARROW_DOWN:
     if (E.cursor_y < E.numRows - 1) {
+
+      if (E.cursor_x > latest_max_position)
+        latest_max_position = E.cursor_x;
       E.cursor_y++;
       clamp_cursor_to_row_width();
     }
