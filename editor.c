@@ -222,11 +222,12 @@ void editorProcessKeypress(void) {
 }
 
 void editorDrawRows(struct append_buffer *ab) {
-  for (int i = E.row_offset; i < E.screenrows - 2; i++) {
+  for (int i = 0; i < E.screenrows - 2; i++) {
 
+    int current_row = E.row_offset + i;
     abAppend(ab, "\x1b[K", 3); // Clean in line
 
-    abAppend(ab, E.row[i].chars, E.row[i].length);
+    abAppend(ab, E.row[current_row].chars, E.row[current_row].length);
     //    if (i < E.numRows - 1) {
     abAppend(ab, "\r\n", 2);
     //   }
@@ -238,7 +239,16 @@ void editorDrawRows(struct append_buffer *ab) {
     }*/
 }
 
+void editorScroll(void) {
+  if (E.cursor_y < E.row_offset)
+    E.row_offset = E.cursor_y;
+  if (E.cursor_y >= E.row_offset + E.screenrows) {
+    E.row_offset = E.cursor_y - E.screenrows + 1;
+  }
+}
+
 void editorRefreshScreen(void) {
+  editorScroll();
   struct append_buffer ab = {NULL, 0};
   abAppend(&ab, "\x1b[?25l", 6); // Hide the cursor
   abAppend(&ab, "\x1b[H", 3);    // Move cursor to top left
@@ -247,7 +257,8 @@ void editorRefreshScreen(void) {
 
   // Move cursor
   char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cursor_y + 1, E.cursor_x + 1);
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cursor_y - E.row_offset) + 1,
+           E.cursor_x + 1);
   abAppend(&ab, buf, strlen(buf));
 
   abAppend(&ab, "\x1b[?25h", 6); // SHow the cursor
