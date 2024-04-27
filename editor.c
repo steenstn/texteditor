@@ -222,14 +222,14 @@ void editorProcessKeypress(void) {
 }
 
 void editorDrawRows(struct append_buffer *ab) {
-  for (int i = 0; i < E.numRows; i++) {
+  for (int i = E.row_offset; i < E.screenrows - 2; i++) {
 
     abAppend(ab, "\x1b[K", 3); // Clean in line
 
     abAppend(ab, E.row[i].chars, E.row[i].length);
-    // if (i < E.screenrows - 1) {
+    //    if (i < E.numRows - 1) {
     abAppend(ab, "\r\n", 2);
-    //}
+    //   }
   }
   abAppend(ab, E.status_row, 20);
   //  write(STDOUT_FILENO, E.row.chars, E.row.length);
