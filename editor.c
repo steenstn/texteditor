@@ -19,6 +19,7 @@ struct editorConfig {
   int screenrows;
   int screencols;
   struct termios orig_termios;
+  int row_offset;
   editorrow *row;
   int numRows;
   int cursor_x;
@@ -29,8 +30,30 @@ struct editorConfig {
 struct editorConfig E;
 
 enum editorKey { ARROW_LEFT = 1000, ARROW_RIGHT, ARROW_UP, ARROW_DOWN };
+
+struct append_buffer {
+  char *buffer;
+  int length;
+};
+
+void abAppend(struct append_buffer *ab, const char *s, int length) {
+  char *new = realloc(ab->buffer, ab->length + length);
+
+  if (new == NULL) {
+    return;
+  }
+  memcpy(&new[ab->length], s, length);
+  ab->buffer = new;
+  ab->length += length;
+}
+
+void abFree(struct append_buffer *ab) { free(ab->buffer); }
+
 void die(const char *s) {
+  write(STDOUT_FILENO, "\x1b[2J", 4); // Clear screen
+  write(STDOUT_FILENO, "\x1b[H", 3);  // Move cursor to top
   perror(s);
+
   exit(1);
 }
 
@@ -53,6 +76,7 @@ void initEditor(void) {
   E.row = NULL;
   E.cursor_x = 0;
   E.cursor_y = 0;
+  E.row_offset = 0;
 }
 
 void disableRawMode(void) {
@@ -123,7 +147,7 @@ int editorReadKey(void) {
   return c;
 }
 int latest_max_position = 0;
-void clamp_cursor_to_row_width() {
+void clamp_cursor_to_row_width(void) {
   E.cursor_x = latest_max_position;
   if (E.cursor_x > E.row[E.cursor_y].length) {
     E.cursor_x = E.row[E.cursor_y].length;
@@ -163,8 +187,9 @@ void editorMoveCursor(int key) {
   case ARROW_DOWN:
     if (E.cursor_y < E.numRows - 1) {
 
-      if (E.cursor_x > latest_max_position)
+      if (E.cursor_x > latest_max_position) {
         latest_max_position = E.cursor_x;
+      }
       E.cursor_y++;
       clamp_cursor_to_row_width();
     }
@@ -176,6 +201,8 @@ void editorProcessKeypress(void) {
   int c = editorReadKey();
   switch (c) {
   case CTRL_KEY('q'):
+    write(STDOUT_FILENO, "\x1b[2J", 4); // Clear screen
+    write(STDOUT_FILENO, "\x1b[H", 3);  // Move cursor to top
     exit(0);
     break;
 
@@ -188,18 +215,23 @@ void editorProcessKeypress(void) {
   }
   snprintf(E.status_row, 20, "x: %d - y: %d\r\n", E.cursor_x,
            E.cursor_y); // printf("escape!");
-  if (c == '\x1b') {
-    char *lol = "esc\r\n";
-    write(STDOUT_FILENO, lol, 5); // printf("escape!");
-  }
+  //  if (c == '\x1b') {
+  // char *lol = "esc\r\n";
+  // write(STDOUT_FILENO, lol, 5); // printf("escape!");
+  // }
 }
 
-void editorDrawRows(void) {
+void editorDrawRows(struct append_buffer *ab) {
   for (int i = 0; i < E.numRows; i++) {
-    write(STDOUT_FILENO, E.row[i].chars, E.row[i].length);
-    write(STDOUT_FILENO, "\r\n", 2);
+
+    abAppend(ab, "\x1b[K", 3); // Clean in line
+
+    abAppend(ab, E.row[i].chars, E.row[i].length);
+    // if (i < E.screenrows - 1) {
+    abAppend(ab, "\r\n", 2);
+    //}
   }
-  write(STDOUT_FILENO, E.status_row, 20);
+  abAppend(ab, E.status_row, 20);
   //  write(STDOUT_FILENO, E.row.chars, E.row.length);
   /*  for (int y = 0; y < E.screenrows; y++) {
       write(STDOUT_FILENO, "*\r\n", 3);
@@ -207,14 +239,21 @@ void editorDrawRows(void) {
 }
 
 void editorRefreshScreen(void) {
-  write(STDOUT_FILENO, "\x1b[2J", 4);
-  write(STDOUT_FILENO, "\x1b[H", 3); // Move cursor to top left
+  struct append_buffer ab = {NULL, 0};
+  abAppend(&ab, "\x1b[?25l", 6); // Hide the cursor
+  abAppend(&ab, "\x1b[H", 3);    // Move cursor to top left
 
-  editorDrawRows();
+  editorDrawRows(&ab);
 
+  // Move cursor
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cursor_y + 1, E.cursor_x + 1);
-  write(STDOUT_FILENO, buf, strlen(buf));
+  abAppend(&ab, buf, strlen(buf));
+
+  abAppend(&ab, "\x1b[?25h", 6); // SHow the cursor
+
+  write(STDOUT_FILENO, ab.buffer, ab.length);
+  abFree(&ab);
 }
 
 void loadFile(char *filename) {
@@ -248,10 +287,12 @@ void loadFile(char *filename) {
   fclose(fp);
 }
 
-int main(void) {
+int main(int argc, char *argv[]) {
   enableRawMode();
   initEditor();
-  loadFile("test.txt");
+  if (argc >= 2) {
+    loadFile(argv[1]);
+  }
   while (1) {
     editorRefreshScreen();
     editorProcessKeypress();
